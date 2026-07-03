@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teatro × Prestige — Cleaning Schedule Builder</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --stage:#131109;
+    --panel:#1d1a12;
+    --panel-2:#241f14;
+    --cell:#181510;
+    --line:#3a3222;
+    --gold:#d4af37;
+    --gold-dim:#8a7a45;
+    --ivory:#ece5d3;
+    --muted:#9a917c;
+    --dim:#5f584a;
+    --green:#7fb069;
+    --red:#d06c5b;
+    --c-day:#5b8a72;      /* day shift chip */
+    --c-show:#d4af37;     /* show chip */
+    --c-load:#7a91b8;     /* load in/out chip */
+    --c-maint:#a78bba;    /* maintenance chip */
+    --radius:10px;
+    font-size:15px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--stage);color:var(--ivory);font-family:"Segoe UI",system-ui,-apple-system,sans-serif;min-height:100vh}
+  h1,h2{font-family:Georgia,"Times New Roman",serif}
+
+  /* ── Top bar ── */
+  header{
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    padding:14px 22px;border-bottom:1px solid var(--gold-dim);
+    background:linear-gradient(180deg,#1a1710,#131109);
+    position:sticky;top:0;z-index:50;
+  }
+  header h1{font-size:1.2rem;letter-spacing:.14em;font-weight:400;color:var(--gold)}
+  header h1 span{color:var(--ivory);letter-spacing:.04em}
+  .bar-right{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+
+  select,input{background:var(--panel-2);border:1px solid var(--line);color:var(--ivory);border-radius:6px;padding:6px 8px;font:inherit}
+  input:focus,select:focus{outline:2px solid var(--gold);outline-offset:1px}
+  button{background:var(--panel-2);border:1px solid var(--line);color:var(--ivory);border-radius:6px;padding:7px 13px;font:inherit;cursor:pointer;transition:border-color .15s,background .15s}
+  button:hover{border-color:var(--gold)}
+  button.gold{background:var(--gold);color:#1a1508;border-color:var(--gold);font-weight:600}
+  button.gold:hover{background:#e2c14f}
+  button.ghost{background:transparent}
+  button.danger:hover{border-color:var(--red);color:var(--red)}
+  button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+  /* ── Layout ── */
+  .wrap{display:grid;grid-template-columns:1fr 320px;gap:18px;padding:18px 22px;max-width:1560px;margin:0 auto}
+  @media(max-width:1050px){.wrap{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .card h2{font-size:.85rem;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);margin-bottom:12px;font-weight:400}
+
+  /* ── Shows manager ── */
+  .shows-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+  .show-chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--gold-dim);border-radius:999px;padding:4px 6px 4px 12px;font-size:.85rem;color:var(--gold);letter-spacing:.05em}
+  .show-chip small{color:var(--muted);letter-spacing:0}
+  .show-chip button{padding:1px 8px;border-radius:999px;font-size:.75rem}
+
+  /* ── Calendar ── */
+  .cal-scroll{overflow-x:auto}
+  .calendar{min-width:760px}
+  .dow-row{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+  .dow-row div{font-size:.68rem;letter-spacing:.18em;color:var(--gold-dim);text-transform:uppercase;text-align:center;padding:4px 0}
+  .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cell{
+    background:var(--cell);border:1px solid var(--line);border-radius:8px;
+    min-height:112px;padding:6px;position:relative;cursor:pointer;
+    display:flex;flex-direction:column;gap:4px;
+    transition:border-color .15s;
+  }
+  .cell:hover{border-color:var(--gold-dim)}
+  .cell.blank{background:transparent;border-color:transparent;cursor:default}
+  .cell.weekend{background:#1c180e}
+  .cell.today{border-color:var(--gold)}
+  .cell-head{display:flex;align-items:baseline;gap:6px}
+  .cell-num{font-size:.95rem;font-weight:600}
+  .cell.weekend .cell-num{color:var(--gold)}
+  .ph-badge{font-size:.58rem;letter-spacing:.08em;background:var(--gold);color:#1a1508;border-radius:3px;padding:1px 5px;font-weight:700}
+  .show-tag{
+    font-size:.58rem;letter-spacing:.1em;color:var(--gold);
+    border-left:2px solid var(--gold);padding-left:5px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    text-transform:uppercase;opacity:.85;
+  }
+  .chip{
+    border:none;border-radius:5px;padding:4px 6px;font-size:.7rem;font-weight:600;
+    text-align:left;color:#14110a;cursor:pointer;width:100%;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    display:flex;justify-content:space-between;gap:6px;
+  }
+  .chip small{font-weight:700;opacity:.75}
+  .chip.t-day{background:var(--c-day)}
+  .chip.t-show{background:var(--c-show)}
+  .chip.t-load{background:var(--c-load)}
+  .chip.t-maint{background:var(--c-maint)}
+  .chip:hover{filter:brightness(1.12)}
+  .cell .plus{
+    margin-top:auto;align-self:flex-end;
+    font-size:.85rem;line-height:1;padding:2px 8px;border-radius:5px;
+    color:var(--dim);border:1px dashed var(--line);background:transparent;
+  }
+  .cell:hover .plus{color:var(--gold);border-color:var(--gold-dim)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:.72rem;color:var(--muted)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  /* ── Popover (add shift) ── */
+  .pop{
+    position:absolute;z-index:80;background:var(--panel-2);border:1px solid var(--gold-dim);
+    border-radius:10px;padding:10px;min-width:210px;box-shadow:0 10px 30px rgba(0,0,0,.6);
+  }
+  .pop .pop-title{font-size:.68rem;letter-spacing:.15em;color:var(--gold);text-transform:uppercase;margin-bottom:8px}
+  .pop button{display:block;width:100%;text-align:left;margin-bottom:5px;font-size:.85rem;padding:7px 10px}
+  .pop .split{border-top:1px dashed var(--line);margin:7px 0}
+  .pop .ph{color:var(--muted);font-size:.78rem}
+
+  /* ── Modals ── */
+  dialog{background:var(--panel);color:var(--ivory);border:1px solid var(--gold-dim);border-radius:var(--radius);padding:22px;max-width:560px;width:92vw}
+  dialog::backdrop{background:rgba(0,0,0,.65)}
+  dialog h2{color:var(--gold);font-size:1rem;letter-spacing:.15em;margin-bottom:14px;text-transform:uppercase;font-weight:400}
+  .edit-grid{display:grid;grid-template-columns:110px 1fr 110px 1fr;gap:10px 12px;align-items:center;font-size:.88rem}
+  .edit-grid label{color:var(--muted)}
+  .edit-grid input,.edit-grid select{width:100%}
+  .edit-grid .full{grid-column:2/5}
+  .edit-cost{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);display:flex;justify-content:space-between;font-variant-numeric:tabular-nums}
+  .edit-cost b{color:var(--gold)}
+  dialog footer{display:flex;justify-content:space-between;gap:8px;margin-top:20px}
+  dialog footer .right{display:flex;gap:8px;margin-left:auto}
+
+  .set-grid{display:grid;grid-template-columns:1fr 110px 110px;gap:8px 10px;align-items:center;font-size:.87rem}
+  .set-grid .head{font-size:.68rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+  .set-grid input{width:100%;text-align:right}
+  .set-sec{margin:18px 0 8px;font-size:.72rem;letter-spacing:.15em;color:var(--gold-dim);text-transform:uppercase}
+  .pct-grid{display:grid;grid-template-columns:1fr 110px;gap:8px 10px;align-items:center;font-size:.87rem}
+
+  /* ── Settlement ── */
+  .settle{position:sticky;top:76px}
+  .settle .row{display:flex;justify-content:space-between;padding:5px 0;font-size:.87rem;font-variant-numeric:tabular-nums}
+  .settle .row span:first-child{color:var(--muted)}
+  .settle .row.sub{border-top:1px solid var(--line);margin-top:4px;padding-top:8px}
+  .settle .row.grand{border-top:2px solid var(--gold);margin-top:8px;padding-top:10px;font-size:1.05rem;color:var(--gold);font-weight:600}
+  .settle .lock{font-size:.68rem;color:var(--dim);letter-spacing:.12em;margin-bottom:10px;text-transform:uppercase}
+  .quote-box{margin-top:14px;border-top:1px dashed var(--line);padding-top:12px}
+  .quote-box label{font-size:.75rem;color:var(--muted);display:block;margin-bottom:5px}
+  .variance{margin-top:8px;font-size:.9rem;font-variant-numeric:tabular-nums}
+  .variance.ok{color:var(--green)} .variance.bad{color:var(--red)}
+  .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px}
+  .stat{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:8px;text-align:center}
+  .stat b{display:block;font-size:1.15rem;color:var(--gold);font-variant-numeric:tabular-nums}
+  .stat span{font-size:.62rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+
+  .hint{font-size:.72rem;color:var(--dim);margin-top:8px;line-height:1.5}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--gold);color:#1a1508;font-weight:600;padding:10px 20px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:99}
+  .toast.show{opacity:1}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>TEATRO <span>×</span> PRESTIGE <span style="font-size:.72rem;color:var(--muted);letter-spacing:.1em;margin-left:8px">CLEANING SCHEDULE</span></h1>
+  <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)">
+    Month <input type="month" id="monthPick">
+  </label>
+  <div class="bar-right">
+    <button id="btnSettings">⚙ Rates &amp; Settings</button>
+    <button id="btnSave">Save project</button>
+    <button id="btnLoad">Load project</button>
+    <input type="file" id="fileLoad" accept=".json" hidden>
+    <button id="btnExportPrestige" class="gold">Export for Prestige</button>
+    <button id="btnExportInternal">Export internal (costs)</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <main>
+    <div class="card" style="margin-bottom:16px">
+      <h2>Shows this month</h2>
+      <div class="shows-row" id="showChips"></div>
+      <div class="shows-row">
+        <input type="text" id="showName" placeholder="Show name e.g. MANDISI LIVE" style="min-width:200px">
+        <input type="date" id="showStart" title="First day">
+        <input type="date" id="showEnd" title="Last day">
+        <button id="btnAddShow">Add show</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 id="calTitle">Schedule</h2>
+      <div class="cal-scroll">
+        <div class="calendar">
+          <div class="dow-row"><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div></div>
+          <div class="grid" id="grid"></div>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--c-day)"></i>Day shift</span>
+        <span><i style="background:var(--c-show)"></i>Show</span>
+        <span><i style="background:var(--c-load)"></i>Load in / out</span>
+        <span><i style="background:var(--c-maint)"></i>Maintenance</span>
+        <span style="color:var(--dim)">Empty days export as NO CLEANERS automatically</span>
+      </div>
+    </div>
+  </main>
+
+  <aside>
+    <div class="card settle">
+      <h2>Settlement — Internal Only</h2>
+      <div class="lock">🔒 Never included in the Prestige export</div>
+      <div id="costRows"></div>
+      <div class="quote-box">
+        <label for="quoteIn">Prestige quoted total (incl. VAT) — paste to compare</label>
+        <input type="number" id="quoteIn" step="0.01" placeholder="R 0.00" style="width:100%">
+        <div class="variance" id="varianceOut"></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="stShifts">0</b><span>Shifts</span></div>
+        <div class="stat"><b id="stSupH">0</b><span>Sup hrs</span></div>
+        <div class="stat"><b id="stClnH">0</b><span>Cleaner hrs</span></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- Edit shift modal -->
+<dialog id="dlgEdit">
+  <h2 id="editTitle">Edit Shift</h2>
+  <div class="edit-grid">
+    <label>Action</label>
+    <input type="text" id="e_action" class="full" placeholder="e.g. DAY SHIFT - LOAD IN">
+    <label>Start</label><input type="time" id="e_start">
+    <label>End</label><input type="time" id="e_end">
+    <label>Supervisors</label><input type="number" id="e_sup" min="0" step="1">
+    <label>Cleaners</label><input type="number" id="e_cln" min="0" step="1">
+    <label>Paid hours</label><input type="number" id="e_hours" min="0" step="0.5">
+    <label>Rate type</label>
+    <select id="e_rate">
+      <option value="day">Weekday day</option>
+      <option value="evening">Evening show</option>
+      <option value="sunday">Sunday</option>
+      <option value="holiday">Public holiday</option>
+    </select>
+  </div>
+  <div class="edit-cost"><span>Line cost (sup + cleaners)</span><b id="e_cost">R 0.00</b></div>
+  <footer>
+    <button id="e_delete" class="danger ghost">Delete shift</button>
+    <div class="right">
+      <button id="e_cancel" class="ghost">Cancel</button>
+      <button id="e_save" class="gold">Save</button>
+    </div>
+  </footer>
+</dialog>
+
+<!-- Settings modal -->
+<dialog id="dlgSettings">
+  <h2>Rates &amp; Settings</h2>
+  <div class="set-sec">Hourly rates (Rand)</div>
+  <div class="set-grid">
+    <span class="head"></span><span class="head">Supervisor</span><span class="head">Cleaner</span>
+    <span>Weekday day shift</span><input type="number" step="0.01" id="r_sup_day"><input type="number" step="0.01" id="r_cln_day">
+    <span>Evening show</span><input type="number" step="0.01" id="r_sup_evening"><input type="number" step="0.01" id="r_cln_evening">
+    <span>Sunday</span><input type="number" step="0.01" id="r_sup_sunday"><input type="number" step="0.01" id="r_cln_sunday">
+    <span>Public holiday</span><input type="number" step="0.01" id="r_sup_holiday"><input type="number" step="0.01" id="r_cln_holiday">
+  </div>
+  <div class="set-sec">Cost build-up percentages</div>
+  <div class="pct-grid">
+    <span>Payroll burden %</span><input type="number" step="0.1" id="p_burden">
+    <span>Cleaning materials %</span><input type="number" step="0.1" id="p_materials">
+    <span>Management fee %</span><input type="number" step="0.1" id="p_mgmt">
+    <span>VAT %</span><input type="number" step="0.1" id="p_vat">
+  </div>
+  <div class="hint">Settings are stored inside your saved project file, so each month's archive keeps the rates that applied at the time.</div>
+  <footer><div class="right"><button id="btnSettingsClose" class="gold">Done</button></div></footer>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ══════════ STATE ══════════ */
+const DEFAULTS = {
+  rates:{
+    sup:{day:88.83, evening:88.83, sunday:88.83, holiday:88.83},
+    cln:{day:33.27, evening:34.94, sunday:49.91, holiday:49.91}
+  },
+  pct:{burden:15, materials:5, mgmt:10, vat:15}
+};
+
+let state = {
+  year:2026, month:6,
+  shows:[],            // {name,start,end}
+  days:{},             // iso -> [shift]
+  holidays:{},         // iso -> true
+  settings: JSON.parse(JSON.stringify(DEFAULTS)),
+  quote:null
+};
+
+const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+const PRESETS=[
+  {label:'Day Shift',        cls:'t-day',   mk:d=>({action:'DAY SHIFT', start:'08:00', end:'16:00', sup:1, cleaners:4, hours:8, rateType:autoRate(d,'day'), cls:'t-day'})},
+  {label:'Show @ 19:30',     cls:'t-show',  mk:d=>({action:'SHOW @ 19:30', start:'16:00', end:'23:00', sup:1, cleaners:6, hours:7, rateType:autoRate(d,'evening'), cls:'t-show'})},
+  {label:'Show @ 15:00',     cls:'t-show',  mk:d=>({action:'SHOW @ 15:00', start:'11:00', end:'19:00', sup:1, cleaners:6, hours:7, rateType:autoRate(d,'evening'), cls:'t-show'})},
+  {label:'Load In',          cls:'t-load',  mk:d=>({action:'DAY SHIFT - LOAD IN', start:'08:00', end:'16:00', sup:1, cleaners:4, hours:7, rateType:autoRate(d,'day'), cls:'t-load'})},
+  {label:'Show + Load Out',  cls:'t-load',  mk:d=>({action:'SHOW + LOAD OUT', start:'09:00', end:'20:00', sup:1, cleaners:6, hours:8, rateType:autoRate(d,'day'), cls:'t-load'})},
+  {label:'Maintenance Clean',cls:'t-maint', mk:d=>({action:'DAY SHIFT - MAINTENANCE CLEAN', start:'09:00', end:'16:00', sup:1, cleaners:2, hours:7, rateType:autoRate(d,'day'), cls:'t-maint'})},
+  {label:'Custom shift…',    cls:'t-day',   mk:d=>({action:'', start:'08:00', end:'16:00', sup:1, cleaners:4, hours:8, rateType:autoRate(d,'day'), cls:'t-day'})}
+];
+
+function autoRate(isoD, base){
+  if(state.holidays[isoD]) return 'holiday';
+  const d=new Date(isoD+'T00:00:00');
+  if(d.getDay()===0) return 'sunday';
+  return base;
+}
+
+/* ══════════ HELPERS ══════════ */
+const $=s=>document.querySelector(s);
+const fmtR=n=>'R '+n.toLocaleString('en-ZA',{minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtN=n=>n.toLocaleString('en-ZA',{maximumFractionDigits:1});
+const iso=(y,m,d)=>`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+const round2=n=>Math.round(n*100)/100;
+function daysInMonth(y,m){return new Date(y,m+1,0).getDate();}
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function prettyDate(isoD){const d=new Date(isoD+'T00:00:00');return `${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;}
+
+function shiftCost(sh){
+  const s=state.settings;
+  const supRate=s.rates.sup[sh.rateType]??0, clnRate=s.rates.cln[sh.rateType]??0;
+  const supTotal=(+sh.sup||0)*supRate*(+sh.hours||0);
+  const clnTotal=(+sh.cleaners||0)*clnRate*(+sh.hours||0);
+  return {supRate,clnRate,supTotal,clnTotal,line:supTotal+clnTotal};
+}
+
+function computeTotals(){
+  let supTotal=0,clnTotal=0,supH=0,clnH=0,shifts=0;
+  for(const isoD in state.days){
+    for(const sh of state.days[isoD]){
+      const c=shiftCost(sh);
+      supTotal+=c.supTotal; clnTotal+=c.clnTotal;
+      supH+=(+sh.sup||0)*(+sh.hours||0);
+      clnH+=(+sh.cleaners||0)*(+sh.hours||0);
+      shifts++;
+    }
+  }
+  const p=state.settings.pct;
+  const wages=supTotal+clnTotal;
+  const burden=wages*p.burden/100;
+  const sub1=wages+burden;
+  const materials=sub1*p.materials/100;
+  const sub2=sub1+materials;
+  const mgmt=sub2*p.mgmt/100;
+  const sub3=sub2+mgmt;
+  const vat=sub3*p.vat/100;
+  return {supTotal,clnTotal,wages,burden,sub1,materials,sub2,mgmt,sub3,vat,grand:sub3+vat,supH,clnH,shifts};
+}
+
+function showsOn(isoD){
+  return state.shows.filter(s=>isoD>=s.start && isoD<=(s.end||s.start));
+}
+
+/* ══════════ RENDER ══════════ */
+function render(){
+  $('#monthPick').value=`${state.year}-${String(state.month+1).padStart(2,'0')}`;
+  $('#calTitle').textContent=`${MONTHS[state.month]} ${state.year}`;
+  renderShows();
+  renderCalendar();
+  renderCosts();
+}
+
+function renderShows(){
+  const box=$('#showChips'); box.innerHTML='';
+  if(!state.shows.length){box.innerHTML='<span class="hint" style="margin:0">No shows added yet — show names appear as headers on the calendar and in both exports.</span>';}
+  state.shows.forEach((s,i)=>{
+    const chip=document.createElement('span'); chip.className='show-chip';
+    chip.innerHTML=`${esc(s.name)} <small>${prettyDate(s.start)} → ${prettyDate(s.end||s.start)}</small>`;
+    const del=document.createElement('button'); del.textContent='✕'; del.title='Remove show';
+    del.onclick=()=>{state.shows.splice(i,1);render();};
+    chip.appendChild(del); box.appendChild(chip);
+  });
+}
+
+function chipLabel(sh){
+  const a=(sh.action||'SHIFT').replace('DAY SHIFT - ','').replace('DAY SHIFT','DAY');
+  return a;
+}
+
+function renderCalendar(){
+  const grid=$('#grid'); grid.innerHTML='';
+  const n=daysInMonth(state.year,state.month);
+  const first=new Date(state.year,state.month,1).getDay();     // 0=Sun
+  const lead=(first+6)%7;                                       // Monday-first offset
+  const todayIso=(()=>{const t=new Date();return iso(t.getFullYear(),t.getMonth(),t.getDate());})();
+
+  for(let i=0;i<lead;i++){
+    const b=document.createElement('div'); b.className='cell blank'; grid.appendChild(b);
+  }
+  for(let d=1;d<=n;d++){
+    const isoD=iso(state.year,state.month,d);
+    const dt=new Date(state.year,state.month,d);
+    const dow=dt.getDay();
+    const cell=document.createElement('div');
+    cell.className='cell'+((dow===0||dow===6)?' weekend':'')+(isoD===todayIso?' today':'');
+    cell.dataset.iso=isoD;
+    cell.setAttribute('role','button');
+    cell.tabIndex=0;
+
+    const head=document.createElement('div'); head.className='cell-head';
+    head.innerHTML=`<span class="cell-num">${d}</span>`;
+    if(state.holidays[isoD]){const b=document.createElement('span');b.className='ph-badge';b.textContent='PH';head.appendChild(b);}
+    cell.appendChild(head);
+
+    for(const s of showsOn(isoD)){
+      const tag=document.createElement('div'); tag.className='show-tag'; tag.textContent=s.name; cell.appendChild(tag);
+    }
+
+    (state.days[isoD]||[]).forEach((sh,si)=>{
+      const c=document.createElement('button');
+      c.className='chip '+(sh.cls||'t-day');
+      c.innerHTML=`<span>${esc(chipLabel(sh))}</span><small>${sh.sup}+${sh.cleaners} · ${sh.hours}h</small>`;
+      c.title=`${sh.action} ${sh.start}–${sh.end} — click to edit`;
+      c.onclick=e=>{e.stopPropagation(); openEdit(isoD,si);};
+      cell.appendChild(c);
+    });
+
+    const plus=document.createElement('span'); plus.className='plus'; plus.textContent='+';
+    cell.appendChild(plus);
+
+    cell.addEventListener('click',e=>openPopover(cell,isoD));
+    cell.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openPopover(cell,isoD);}});
+    grid.appendChild(cell);
+  }
+}
+
+/* ── add-shift popover ── */
+let popEl=null;
+function closePopover(){if(popEl){popEl.remove();popEl=null;document.removeEventListener('click',outsidePop,true);}}
+function outsidePop(e){if(popEl && !popEl.contains(e.target)) closePopover();}
+
+function openPopover(cell,isoD){
+  closePopover();
+  const pop=document.createElement('div'); pop.className='pop'; popEl=pop;
+  const d=new Date(isoD+'T00:00:00');
+  pop.innerHTML=`<div class="pop-title">Add shift — ${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}</div>`;
+  PRESETS.forEach(p=>{
+    const b=document.createElement('button');
+    b.innerHTML=`<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--c-${p.cls.slice(2)});margin-right:8px"></i>${p.label}`;
+    b.onclick=e=>{
+      e.stopPropagation();
+      if(!state.days[isoD]) state.days[isoD]=[];
+      const sh=p.mk(isoD);
+      state.days[isoD].push(sh);
+      closePopover();
+      render();
+      if(p.label==='Custom shift…') openEdit(isoD, state.days[isoD].length-1);
+    };
+    pop.appendChild(b);
+  });
+  const split=document.createElement('div'); split.className='split'; pop.appendChild(split);
+  const ph=document.createElement('button'); ph.className='ph ghost';
+  ph.textContent=state.holidays[isoD]?'✕ Unmark public holiday':'★ Mark public holiday';
+  ph.onclick=e=>{
+    e.stopPropagation();
+    if(state.holidays[isoD]) delete state.holidays[isoD]; else state.holidays[isoD]=true;
+    (state.days[isoD]||[]).forEach(sh=>{
+      if(state.holidays[isoD]) sh.rateType='holiday';
+      else if(sh.rateType==='holiday') sh.rateType=autoRate(isoD,'day');
+    });
+    closePopover(); render();
+  };
+  pop.appendChild(ph);
+
+  document.body.appendChild(pop);
+  const r=cell.getBoundingClientRect();
+  const pw=pop.offsetWidth, ph2=pop.offsetHeight;
+  let left=r.left+window.scrollX, top=r.bottom+window.scrollY+4;
+  if(left+pw>window.scrollX+document.documentElement.clientWidth-10) left=r.right+window.scrollX-pw;
+  if(r.bottom+ph2>window.innerHeight-10) top=r.top+window.scrollY-ph2-4;
+  pop.style.left=left+'px'; pop.style.top=top+'px';
+  setTimeout(()=>document.addEventListener('click',outsidePop,true),0);
+}
+
+/* ── edit modal ── */
+const dlgEdit=$('#dlgEdit');
+let editRef=null; // {iso, index}
+
+function openEdit(isoD, idx){
+  closePopover();
+  const sh=state.days[isoD][idx];
+  editRef={iso:isoD, idx};
+  const d=new Date(isoD+'T00:00:00');
+  $('#editTitle').textContent=`Edit Shift — ${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
+  $('#e_action').value=sh.action||'';
+  $('#e_start').value=sh.start||'';
+  $('#e_end').value=sh.end||'';
+  $('#e_sup').value=sh.sup;
+  $('#e_cln').value=sh.cleaners;
+  $('#e_hours').value=sh.hours;
+  $('#e_rate').value=sh.rateType;
+  updateEditCost();
+  dlgEdit.showModal();
+}
+function draftShift(){
+  return {
+    action:$('#e_action').value, start:$('#e_start').value, end:$('#e_end').value,
+    sup:+$('#e_sup').value||0, cleaners:+$('#e_cln').value||0, hours:+$('#e_hours').value||0,
+    rateType:$('#e_rate').value
+  };
+}
+function updateEditCost(){ $('#e_cost').textContent=fmtR(shiftCost(draftShift()).line); }
+['e_sup','e_cln','e_hours','e_rate'].forEach(id=>$('#'+id).addEventListener('input',updateEditCost));
+
+$('#e_save').onclick=()=>{
+  const sh=state.days[editRef.iso][editRef.idx];
+  Object.assign(sh, draftShift());
+  // recolour chip by action keywords
+  const a=sh.action.toUpperCase();
+  sh.cls = a.includes('SHOW') && !a.includes('LOAD') ? 't-show'
+        : (a.includes('LOAD')?'t-load'
+        : (a.includes('MAINT')?'t-maint':'t-day'));
+  dlgEdit.close(); render();
+};
+$('#e_cancel').onclick=()=>dlgEdit.close();
+$('#e_delete').onclick=()=>{
+  state.days[editRef.iso].splice(editRef.idx,1);
+  if(!state.days[editRef.iso].length) delete state.days[editRef.iso];
+  dlgEdit.close(); render();
+};
+
+/* ── settlement ── */
+function renderCosts(){
+  const t=computeTotals();
+  const p=state.settings.pct;
+  $('#costRows').innerHTML=`
+    <div class="row"><span>Supervisor wages</span><span>${fmtR(t.supTotal)}</span></div>
+    <div class="row"><span>Cleaner wages</span><span>${fmtR(t.clnTotal)}</span></div>
+    <div class="row sub"><span>Wages total</span><span>${fmtR(t.wages)}</span></div>
+    <div class="row"><span>Payroll burden @ ${p.burden}%</span><span>${fmtR(t.burden)}</span></div>
+    <div class="row"><span>Cleaning materials @ ${p.materials}%</span><span>${fmtR(t.materials)}</span></div>
+    <div class="row"><span>Management fee @ ${p.mgmt}%</span><span>${fmtR(t.mgmt)}</span></div>
+    <div class="row sub"><span>Subtotal (ex VAT)</span><span>${fmtR(t.sub3)}</span></div>
+    <div class="row"><span>VAT @ ${p.vat}%</span><span>${fmtR(t.vat)}</span></div>
+    <div class="row grand"><span>Expected total</span><span>${fmtR(t.grand)}</span></div>`;
+  $('#stShifts').textContent=t.shifts;
+  $('#stSupH').textContent=fmtN(t.supH);
+  $('#stClnH').textContent=fmtN(t.clnH);
+  renderVariance(t.grand);
+}
+
+function renderVariance(grand){
+  const q=parseFloat($('#quoteIn').value);
+  const out=$('#varianceOut');
+  state.quote=isNaN(q)?null:q;
+  if(isNaN(q)||!grand){out.textContent='';out.className='variance';return;}
+  const diff=q-grand, pct=grand?diff/grand*100:0;
+  out.className='variance '+(Math.abs(pct)<=2?'ok':'bad');
+  out.textContent = diff>=0
+    ? `Quote is ${fmtR(diff)} (${pct.toFixed(1)}%) ABOVE your expected cost`
+    : `Quote is ${fmtR(-diff)} (${Math.abs(pct).toFixed(1)}%) BELOW your expected cost`;
+}
+$('#quoteIn').addEventListener('input',()=>renderVariance(computeTotals().grand));
+
+/* ══════════ TOP-BAR EVENTS ══════════ */
+$('#monthPick').addEventListener('change',e=>{
+  const [y,m]=e.target.value.split('-').map(Number);
+  if(!y)return;
+  if(Object.keys(state.days).length &&
+     !confirm('Changing the month removes shifts that fall outside the new month. Continue?')){
+    render(); return;
+  }
+  state.year=y; state.month=m-1;
+  const pref=`${y}-${String(m).padStart(2,'0')}-`;
+  for(const k of Object.keys(state.days)) if(!k.startsWith(pref)) delete state.days[k];
+  for(const k of Object.keys(state.holidays)) if(!k.startsWith(pref)) delete state.holidays[k];
+  render();
+});
+
+$('#btnAddShow').onclick=()=>{
+  const name=$('#showName').value.trim().toUpperCase();
+  const start=$('#showStart').value, end=$('#showEnd').value;
+  if(!name||!start){toast('Show needs a name and a start date');return;}
+  state.shows.push({name,start,end:end||start});
+  state.shows.sort((a,b)=>a.start.localeCompare(b.start));
+  $('#showName').value='';$('#showStart').value='';$('#showEnd').value='';
+  render();
+};
+
+/* settings */
+const dlgSettings=$('#dlgSettings');
+$('#btnSettings').onclick=()=>{
+  const r=state.settings.rates,p=state.settings.pct;
+  for(const k of ['day','evening','sunday','holiday']){
+    $('#r_sup_'+k).value=r.sup[k]; $('#r_cln_'+k).value=r.cln[k];
+  }
+  $('#p_burden').value=p.burden; $('#p_materials').value=p.materials;
+  $('#p_mgmt').value=p.mgmt; $('#p_vat').value=p.vat;
+  dlgSettings.showModal();
+};
+$('#btnSettingsClose').onclick=()=>{
+  const r=state.settings.rates,p=state.settings.pct;
+  for(const k of ['day','evening','sunday','holiday']){
+    r.sup[k]=parseFloat($('#r_sup_'+k).value)||0;
+    r.cln[k]=parseFloat($('#r_cln_'+k).value)||0;
+  }
+  p.burden=parseFloat($('#p_burden').value)||0;
+  p.materials=parseFloat($('#p_materials').value)||0;
+  p.mgmt=parseFloat($('#p_mgmt').value)||0;
+  p.vat=parseFloat($('#p_vat').value)||0;
+  dlgSettings.close(); render();
+};
+
+/* save / load */
+$('#btnSave').onclick=()=>{
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`PRESTIGE_TEATRO_${MONTHS[state.month].toUpperCase()}_${state.year}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('Project saved');
+};
+$('#btnLoad').onclick=()=>$('#fileLoad').click();
+$('#fileLoad').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const s=JSON.parse(r.result);
+      if(typeof s.year!=='number'||typeof s.days!=='object') throw new Error('bad file');
+      state=Object.assign({holidays:{},shows:[],quote:null,settings:JSON.parse(JSON.stringify(DEFAULTS))},s);
+      $('#quoteIn').value=state.quote??'';
+      render(); toast('Project loaded');
+    }catch(err){toast('That file is not a valid project file');}
+  };
+  r.readAsText(f);
+  e.target.value='';
+});
+
+/* ══════════ EXCEL EXPORT ══════════ */
+function scheduleRows(internal){
+  const rows=[], merges=[];
+  const title=`TEATRO CLEANING : PRESTIGE SCHEDULE ${MONTHS[state.month].toUpperCase()} ${state.year}`;
+  const baseCols=['DAY','DATE','ACTION','SHIFT START','SHIFT END','SUPERVISOR','CLEANERS','HOURS'];
+  const costCols=['SUP R/H','SUP TOTAL','CLEANER R/H','CLEANERS TOTAL'];
+  const width= internal? baseCols.length+costCols.length : baseCols.length;
+
+  rows.push([title]); merges.push({s:{r:0,c:0},e:{r:0,c:width-1}});
+  rows.push([]);
+  rows.push(internal? [...baseCols,...costCols] : baseCols);
+
+  const n=daysInMonth(state.year,state.month);
+  for(let d=1;d<=n;d++){
+    const isoD=iso(state.year,state.month,d);
+    const dt=new Date(state.year,state.month,d);
+
+    for(const s of state.shows){
+      if(s.start===isoD){
+        merges.push({s:{r:rows.length,c:0},e:{r:rows.length,c:width-1}});
+        rows.push([s.name]);
+      }
+    }
+
+    const dayStr=DOW[dt.getDay()];
+    const dateStr=`${String(d).padStart(2,'0')} ${MONTHS[state.month].slice(0,3)} ${state.year}`+(state.holidays[isoD]?'  (PH)':'');
+    const shifts=state.days[isoD]||[];
+
+    if(!shifts.length){
+      const r=[dayStr,dateStr,'NO CLEANERS','','',0,0,0];
+      if(internal) r.push('',0,'',0);
+      rows.push(r);
+      continue;
+    }
+    shifts.forEach((sh,i)=>{
+      const c=shiftCost(sh);
+      const r=[
+        i===0?dayStr:'', i===0?dateStr:'',
+        sh.action||'', sh.start||'', sh.end||'',
+        +sh.sup||0, +sh.cleaners||0, +sh.hours||0
+      ];
+      if(internal) r.push(c.supRate, round2(c.supTotal), c.clnRate, round2(c.clnTotal));
+      rows.push(r);
+    });
+  }
+  return {rows,merges,width};
+}
+
+function buildSheet(internal){
+  const {rows,merges,width}=scheduleRows(internal);
+  const t=computeTotals(), p=state.settings.pct;
+
+  if(internal){
+    rows.push([]);
+    const L=width-2;
+    const put=(label,val)=>{const r=Array(width).fill('');r[L]=label;r[width-1]=round2(val);rows.push(r);};
+    put('SUPERVISOR WAGES', t.supTotal);
+    put('CLEANER WAGES', t.clnTotal);
+    put('WAGES TOTAL', t.wages);
+    put(`PAYROLL BURDEN @ ${p.burden}%`, t.burden);
+    put(`CLEANING MATERIALS @ ${p.materials}%`, t.materials);
+    put(`MANAGEMENT FEE @ ${p.mgmt}%`, t.mgmt);
+    put('SUBTOTAL (EX VAT)', t.sub3);
+    put(`VAT @ ${p.vat}%`, t.vat);
+    put('EXPECTED TOTAL', t.grand);
+    if(state.quote!=null){
+      put('PRESTIGE QUOTED', state.quote);
+      put('VARIANCE (QUOTE − EXPECTED)', state.quote - t.grand);
+    }
+  }else{
+    rows.push([]);
+    const r=Array(width).fill('');
+    r[2]='TOTAL HOURS'; r[7]=round2(t.supH+t.clnH);
+    rows.push(r);
+  }
+
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!merges']=merges;
+  const colW=[{wch:6},{wch:16},{wch:36},{wch:12},{wch:11},{wch:12},{wch:10},{wch:8}];
+  if(internal) colW.push({wch:10},{wch:12},{wch:12},{wch:16});
+  ws['!cols']=colW;
+
+  if(internal){
+    const range=XLSX.utils.decode_range(ws['!ref']);
+    for(let R=range.s.r;R<=range.e.r;R++){
+      for(let C=8;C<=range.e.c;C++){
+        const cell=ws[XLSX.utils.encode_cell({r:R,c:C})];
+        if(cell && typeof cell.v==='number') cell.z='#,##0.00';
+      }
+    }
+  }
+  return ws;
+}
+
+function exportXlsx(internal){
+  if(typeof XLSX==='undefined'){toast('Excel library failed to load — check your internet connection');return;}
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, buildSheet(internal), internal?'Internal Costing':'Schedule');
+  const tag=internal?'INTERNAL_COSTS':'PRESTIGE';
+  XLSX.writeFile(wb, `TEATRO_CLEANING_${MONTHS[state.month].toUpperCase()}_${state.year}_${tag}.xlsx`);
+  toast(internal?'Internal costing exported':'Prestige schedule exported — no financials included');
+}
+$('#btnExportPrestige').onclick=()=>exportXlsx(false);
+$('#btnExportInternal').onclick=()=>exportXlsx(true);
+
+/* init */
+(function init(){
+  const now=new Date();
+  state.year=now.getFullYear(); state.month=now.getMonth();
+  render();
+})();
+</script>
+</body>
+</html>
