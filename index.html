@@ -234,8 +234,8 @@
   <div class="edit-grid">
     <label>Action</label>
     <input type="text" id="e_action" class="full" placeholder="e.g. DAY SHIFT - LOAD IN">
-    <label>Start</label><input type="time" id="e_start">
-    <label>End</label><input type="time" id="e_end">
+    <label>Start</label><input type="time" id="e_start" lang="en-GB" step="60">
+    <label>End</label><input type="time" id="e_end" lang="en-GB" step="60">
     <label>Supervisors</label><input type="number" id="e_sup" min="0" step="1">
     <label>Cleaners</label><input type="number" id="e_cln" min="0" step="1">
     <label>Paid hours</label><input type="number" id="e_hours" min="0" step="0.5">
@@ -251,6 +251,7 @@
   <footer>
     <button id="e_delete" class="danger ghost">Delete shift</button>
     <div class="right">
+      <button id="e_preset" class="ghost" title="Add this shift to the pick-list so you can reuse it">★ Save as reusable shift</button>
       <button id="e_cancel" class="ghost">Cancel</button>
       <button id="e_save" class="gold">Save</button>
     </div>
@@ -297,6 +298,7 @@ let state = {
   shows:[],            // {name,start,end}
   days:{},             // iso -> [shift]
   holidays:{},         // iso -> true
+  customPresets:[],    // {name,action,start,end,sup,cleaners,hours,baseRate,cls}
   settings: JSON.parse(JSON.stringify(DEFAULTS)),
   quote:null
 };
@@ -464,6 +466,30 @@ function openPopover(cell,isoD){
     };
     pop.appendChild(b);
   });
+  if(state.customPresets.length){
+    const sp=document.createElement('div'); sp.className='split'; pop.appendChild(sp);
+    const lbl=document.createElement('div'); lbl.className='pop-title'; lbl.textContent='Saved shifts'; pop.appendChild(lbl);
+    state.customPresets.forEach((cp,ci)=>{
+      const wrap=document.createElement('div'); wrap.style.display='flex'; wrap.style.gap='4px';
+      const b=document.createElement('button'); b.style.flex='1';
+      b.innerHTML=`<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--c-${cp.cls.slice(2)});margin-right:8px"></i>${esc(cp.name)}`;
+      b.onclick=e=>{
+        e.stopPropagation();
+        if(!state.days[isoD]) state.days[isoD]=[];
+        state.days[isoD].push({
+          action:cp.action, start:cp.start, end:cp.end,
+          sup:cp.sup, cleaners:cp.cleaners, hours:cp.hours,
+          rateType:autoRate(isoD, cp.baseRate||'day'), cls:cp.cls
+        });
+        closePopover(); render();
+      };
+      const x=document.createElement('button'); x.textContent='✕'; x.className='ghost'; x.title='Delete saved shift';
+      x.style.flex='none'; x.style.padding='7px 9px'; x.style.color='var(--dim)';
+      x.onclick=e=>{e.stopPropagation(); state.customPresets.splice(ci,1); closePopover(); openPopover(cell,isoD);};
+      wrap.append(b,x); pop.appendChild(wrap);
+    });
+  }
+
   const split=document.createElement('div'); split.className='split'; pop.appendChild(split);
   const ph=document.createElement('button'); ph.className='ph ghost';
   ph.textContent=state.holidays[isoD]?'✕ Unmark public holiday':'★ Mark public holiday';
@@ -521,12 +547,26 @@ function updateEditCost(){ $('#e_cost').textContent=fmtR(shiftCost(draftShift())
 $('#e_save').onclick=()=>{
   const sh=state.days[editRef.iso][editRef.idx];
   Object.assign(sh, draftShift());
-  // recolour chip by action keywords
-  const a=sh.action.toUpperCase();
-  sh.cls = a.includes('SHOW') && !a.includes('LOAD') ? 't-show'
-        : (a.includes('LOAD')?'t-load'
-        : (a.includes('MAINT')?'t-maint':'t-day'));
+  sh.cls=clsFromAction(sh.action);
   dlgEdit.close(); render();
+};
+function clsFromAction(action){
+  const a=(action||'').toUpperCase();
+  return a.includes('SHOW') && !a.includes('LOAD') ? 't-show'
+    : (a.includes('LOAD')?'t-load'
+    : (a.includes('MAINT')?'t-maint':'t-day'));
+}
+$('#e_preset').onclick=()=>{
+  const s=draftShift();
+  const def=s.action.trim()||'Custom shift';
+  const name=(prompt('Name this saved shift (appears in the pick-list):', def)||'').trim();
+  if(!name) return;
+  const cls=clsFromAction(s.action);
+  const baseRate = s.rateType==='evening' ? 'evening' : 'day';
+  const existing=state.customPresets.findIndex(p=>p.name.toLowerCase()===name.toLowerCase());
+  const entry={name, action:s.action, start:s.start, end:s.end, sup:s.sup, cleaners:s.cleaners, hours:s.hours, baseRate, cls};
+  if(existing>=0) state.customPresets[existing]=entry; else state.customPresets.push(entry);
+  toast(existing>=0?'Saved shift updated':'Shift added to pick-list');
 };
 $('#e_cancel').onclick=()=>dlgEdit.close();
 $('#e_delete').onclick=()=>{
@@ -634,7 +674,7 @@ $('#fileLoad').addEventListener('change',e=>{
     try{
       const s=JSON.parse(r.result);
       if(typeof s.year!=='number'||typeof s.days!=='object') throw new Error('bad file');
-      state=Object.assign({holidays:{},shows:[],quote:null,settings:JSON.parse(JSON.stringify(DEFAULTS))},s);
+      state=Object.assign({holidays:{},shows:[],customPresets:[],quote:null,settings:JSON.parse(JSON.stringify(DEFAULTS))},s);
       $('#quoteIn').value=state.quote??'';
       render(); toast('Project loaded');
     }catch(err){toast('That file is not a valid project file');}
