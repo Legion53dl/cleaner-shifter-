@@ -44,8 +44,7 @@
   select,input{background:var(--panel-2);border:1px solid var(--line);color:var(--ivory);border-radius:6px;padding:6px 8px;font:inherit}
   input:focus,select:focus{outline:2px solid var(--gold);outline-offset:1px}
   input[type="date"]::-webkit-calendar-picker-indicator,
-  input[type="month"]::-webkit-calendar-picker-indicator,
-  input[type="time"]::-webkit-calendar-picker-indicator{
+  input[type="month"]::-webkit-calendar-picker-indicator{
     cursor:pointer;
     filter:invert(72%) sepia(55%) saturate(460%) hue-rotate(1deg) brightness(92%) contrast(88%);
   }
@@ -134,6 +133,9 @@
   .edit-grid label{color:var(--muted)}
   .edit-grid input,.edit-grid select{width:100%}
   .edit-grid .full{grid-column:2/5}
+  .timesel{display:flex;align-items:center;gap:5px}
+  .timesel select{flex:1;text-align:center}
+  .timesel b{color:var(--muted)}
   .edit-cost{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);display:flex;justify-content:space-between;font-variant-numeric:tabular-nums}
   .edit-cost b{color:var(--gold)}
   dialog footer{display:flex;justify-content:space-between;gap:8px;margin-top:20px}
@@ -240,8 +242,10 @@
   <div class="edit-grid">
     <label>Action</label>
     <input type="text" id="e_action" class="full" placeholder="e.g. DAY SHIFT - LOAD IN">
-    <label>Start</label><input type="time" id="e_start" lang="en-GB" step="60">
-    <label>End</label><input type="time" id="e_end" lang="en-GB" step="60">
+    <label>Start</label>
+    <span class="timesel"><select id="e_start_h"></select><b>:</b><select id="e_start_m"></select></span>
+    <label>End</label>
+    <span class="timesel"><select id="e_end_h"></select><b>:</b><select id="e_end_m"></select></span>
     <label>Supervisors</label><input type="number" id="e_sup" min="0" step="1">
     <label>Cleaners</label><input type="number" id="e_cln" min="0" step="1">
     <label>Paid hours</label><input type="number" id="e_hours" min="0" step="0.5">
@@ -468,7 +472,7 @@ function openPopover(cell,isoD){
       state.days[isoD].push(sh);
       closePopover();
       render();
-      if(p.label==='Custom shift…') openEdit(isoD, state.days[isoD].length-1);
+      if(p.label==='Custom shift…'){ newCustomFlag=true; openEdit(isoD, state.days[isoD].length-1); }
     };
     pop.appendChild(b);
   });
@@ -491,7 +495,7 @@ function openPopover(cell,isoD){
       };
       const x=document.createElement('button'); x.textContent='✕'; x.className='ghost'; x.title='Delete saved shift';
       x.style.flex='none'; x.style.padding='7px 9px'; x.style.color='var(--dim)';
-      x.onclick=e=>{e.stopPropagation(); state.customPresets.splice(ci,1); closePopover(); openPopover(cell,isoD);};
+      x.onclick=e=>{e.stopPropagation(); state.customPresets.splice(ci,1); persist(); closePopover(); openPopover(cell,isoD);};
       wrap.append(b,x); pop.appendChild(wrap);
     });
   }
@@ -522,7 +526,29 @@ function openPopover(cell,isoD){
 
 /* ── edit modal ── */
 const dlgEdit=$('#dlgEdit');
-let editRef=null; // {iso, index}
+let editRef=null;        // {iso, index}
+let newCustomFlag=false; // true when a fresh Custom shift is being created
+
+/* 24-hour time dropdowns (native picker follows OS clock, so we roll our own) */
+const pad2=n=>String(n).padStart(2,'0');
+function fillTimeSelects(){
+  ['#e_start_h','#e_end_h'].forEach(sel=>{
+    const s=$(sel); s.innerHTML='';
+    for(let h=0;h<24;h++){const o=document.createElement('option');o.value=pad2(h);o.textContent=pad2(h);s.appendChild(o);}
+  });
+  ['#e_start_m','#e_end_m'].forEach(sel=>{
+    const s=$(sel); s.innerHTML='';
+    for(let m=0;m<60;m+=5){const o=document.createElement('option');o.value=pad2(m);o.textContent=pad2(m);s.appendChild(o);}
+  });
+}
+function ensureOption(sel,v){ if(![...sel.options].some(o=>o.value===v)){const o=document.createElement('option');o.value=v;o.textContent=v;sel.appendChild(o);} }
+function setTimeSel(prefix,val){
+  const [h='08',m='00']=(val||'08:00').split(':');
+  const hs=$('#'+prefix+'_h'), ms=$('#'+prefix+'_m');
+  ensureOption(hs,h); ensureOption(ms,m); hs.value=h; ms.value=m;
+}
+function getTimeSel(prefix){ return $('#'+prefix+'_h').value+':'+$('#'+prefix+'_m').value; }
+fillTimeSelects();
 
 function openEdit(isoD, idx){
   closePopover();
@@ -531,8 +557,8 @@ function openEdit(isoD, idx){
   const d=new Date(isoD+'T00:00:00');
   $('#editTitle').textContent=`Edit Shift — ${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
   $('#e_action').value=sh.action||'';
-  $('#e_start').value=sh.start||'';
-  $('#e_end').value=sh.end||'';
+  setTimeSel('e_start', sh.start);
+  setTimeSel('e_end', sh.end);
   $('#e_sup').value=sh.sup;
   $('#e_cln').value=sh.cleaners;
   $('#e_hours').value=sh.hours;
@@ -542,40 +568,53 @@ function openEdit(isoD, idx){
 }
 function draftShift(){
   return {
-    action:$('#e_action').value, start:$('#e_start').value, end:$('#e_end').value,
+    action:$('#e_action').value, start:getTimeSel('e_start'), end:getTimeSel('e_end'),
     sup:+$('#e_sup').value||0, cleaners:+$('#e_cln').value||0, hours:+$('#e_hours').value||0,
     rateType:$('#e_rate').value
   };
 }
 function updateEditCost(){ $('#e_cost').textContent=fmtR(shiftCost(draftShift()).line); }
-['e_sup','e_cln','e_hours','e_rate'].forEach(id=>$('#'+id).addEventListener('input',updateEditCost));
+['e_sup','e_cln','e_hours','e_rate','e_start_h','e_start_m','e_end_h','e_end_m'].forEach(id=>$('#'+id).addEventListener('input',updateEditCost));
 
-$('#e_save').onclick=()=>{
-  const sh=state.days[editRef.iso][editRef.idx];
-  Object.assign(sh, draftShift());
-  sh.cls=clsFromAction(sh.action);
-  dlgEdit.close(); render();
-};
 function clsFromAction(action){
   const a=(action||'').toUpperCase();
   return a.includes('SHOW') && !a.includes('LOAD') ? 't-show'
     : (a.includes('LOAD')?'t-load'
     : (a.includes('MAINT')?'t-maint':'t-day'));
 }
+function savePreset(s, name){
+  name=(name||'').trim(); if(!name) return false;
+  const cls=clsFromAction(s.action);
+  const baseRate = s.rateType==='evening' ? 'evening' : 'day';
+  const entry={name, action:s.action, start:s.start, end:s.end, sup:s.sup, cleaners:s.cleaners, hours:s.hours, baseRate, cls};
+  const i=state.customPresets.findIndex(p=>p.name.toLowerCase()===name.toLowerCase());
+  if(i>=0) state.customPresets[i]=entry; else state.customPresets.push(entry);
+  persist();
+  return i>=0 ? 'updated' : 'added';
+}
+
+$('#e_save').onclick=()=>{
+  const sh=state.days[editRef.iso][editRef.idx];
+  Object.assign(sh, draftShift());
+  sh.cls=clsFromAction(sh.action);
+  if(newCustomFlag && sh.action.trim()){
+    savePreset(sh, sh.action.trim());
+    toast('Custom shift saved to pick-list');
+  }
+  newCustomFlag=false;
+  dlgEdit.close(); render();
+};
 $('#e_preset').onclick=()=>{
   const s=draftShift();
   const def=s.action.trim()||'Custom shift';
-  const name=(prompt('Name this saved shift (appears in the pick-list):', def)||'').trim();
-  if(!name) return;
-  const cls=clsFromAction(s.action);
-  const baseRate = s.rateType==='evening' ? 'evening' : 'day';
-  const existing=state.customPresets.findIndex(p=>p.name.toLowerCase()===name.toLowerCase());
-  const entry={name, action:s.action, start:s.start, end:s.end, sup:s.sup, cleaners:s.cleaners, hours:s.hours, baseRate, cls};
-  if(existing>=0) state.customPresets[existing]=entry; else state.customPresets.push(entry);
-  toast(existing>=0?'Saved shift updated':'Shift added to pick-list');
+  const name=prompt('Name this saved shift (appears in the pick-list):', def);
+  if(name===null) return;
+  const res=savePreset(s,name);
+  if(res) toast(res==='updated'?'Saved shift updated':'Shift added to pick-list');
 };
-$('#e_cancel').onclick=()=>dlgEdit.close();
+$('#e_cancel').onclick=()=>{ newCustomFlag=false; dlgEdit.close(); };
 $('#e_delete').onclick=()=>{
+  newCustomFlag=false;
   state.days[editRef.iso].splice(editRef.idx,1);
   if(!state.days[editRef.iso].length) delete state.days[editRef.iso];
   dlgEdit.close(); render();
@@ -660,6 +699,7 @@ $('#btnSettingsClose').onclick=()=>{
   p.materials=parseFloat($('#p_materials').value)||0;
   p.mgmt=parseFloat($('#p_mgmt').value)||0;
   p.vat=parseFloat($('#p_vat').value)||0;
+  persist();
   dlgSettings.close(); render();
 };
 
@@ -680,7 +720,11 @@ $('#fileLoad').addEventListener('change',e=>{
     try{
       const s=JSON.parse(r.result);
       if(typeof s.year!=='number'||typeof s.days!=='object') throw new Error('bad file');
+      const keepPresets=state.customPresets.slice();
       state=Object.assign({holidays:{},shows:[],customPresets:[],quote:null,settings:JSON.parse(JSON.stringify(DEFAULTS))},s);
+      // keep any pick-list shifts the loaded file didn't include
+      keepPresets.forEach(kp=>{ if(!state.customPresets.some(p=>p.name.toLowerCase()===kp.name.toLowerCase())) state.customPresets.push(kp); });
+      persist();
       $('#quoteIn').value=state.quote??'';
       render(); toast('Project loaded');
     }catch(err){toast('That file is not a valid project file');}
@@ -794,8 +838,26 @@ function exportXlsx(internal){
 $('#btnExportPrestige').onclick=()=>exportXlsx(false);
 $('#btnExportInternal').onclick=()=>exportXlsx(true);
 
+/* ── persistence (survives browser refresh when run from disk) ── */
+const LS_PRESETS='teatro_prestige_presets', LS_SETTINGS='teatro_prestige_settings';
+function persist(){
+  try{
+    localStorage.setItem(LS_PRESETS, JSON.stringify(state.customPresets));
+    localStorage.setItem(LS_SETTINGS, JSON.stringify(state.settings));
+  }catch(e){/* storage unavailable (e.g. sandbox preview) — silently skip */}
+}
+function restorePersisted(){
+  try{
+    const p=localStorage.getItem(LS_PRESETS);
+    if(p){const arr=JSON.parse(p); if(Array.isArray(arr)) state.customPresets=arr;}
+    const s=localStorage.getItem(LS_SETTINGS);
+    if(s){const obj=JSON.parse(s); if(obj&&obj.rates&&obj.pct) state.settings=obj;}
+  }catch(e){/* ignore */}
+}
+
 /* init */
 (function init(){
+  restorePersisted();
   const now=new Date();
   state.year=now.getFullYear(); state.month=now.getMonth();
   render();
