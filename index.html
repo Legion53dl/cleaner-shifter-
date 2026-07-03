@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Teatro × Prestige — Cleaning Schedule (v4 · 24h)</title>
+<title>Teatro × Prestige — Cleaning Schedule (v5 · 24h)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -172,7 +172,7 @@
 <body>
 
 <header>
-  <h1>TEATRO <span>×</span> PRESTIGE <span style="font-size:.72rem;color:var(--muted);letter-spacing:.1em;margin-left:8px">CLEANING SCHEDULE</span> <span style="font-size:.62rem;color:var(--gold-dim);letter-spacing:.1em;margin-left:6px">v4 · 24h</span></h1>
+  <h1>TEATRO <span>×</span> PRESTIGE <span style="font-size:.72rem;color:var(--muted);letter-spacing:.1em;margin-left:8px">CLEANING SCHEDULE</span> <span style="font-size:.62rem;color:var(--gold-dim);letter-spacing:.1em;margin-left:6px">v5 · 24h</span></h1>
   <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)">
     Month <input type="month" id="monthPick">
   </label>
@@ -405,8 +405,22 @@ function chipLabel(sh){
   return a;
 }
 
+function syncShowDatePickers(){
+  const n=daysInMonth(state.year,state.month);
+  const firstIso=iso(state.year,state.month,1);
+  const lastIso=iso(state.year,state.month,n);
+  const inMonth=v=>v && v>=firstIso && v<=lastIso;
+  ['#showStart','#showEnd'].forEach(sel=>{
+    const el=$(sel);
+    el.min=firstIso; el.max=lastIso;
+    // open on the selected month; keep the user's value only if it's within it
+    if(!inMonth(el.value)) el.value=firstIso;
+  });
+}
+
 function renderCalendar(){
   const grid=$('#grid'); grid.innerHTML='';
+  syncShowDatePickers();
   const n=daysInMonth(state.year,state.month);
   const first=new Date(state.year,state.month,1).getDay();     // 0=Sun
   const lead=(first+6)%7;                                       // Monday-first offset
@@ -516,10 +530,20 @@ function openPopover(cell,isoD){
 
   document.body.appendChild(pop);
   const r=cell.getBoundingClientRect();
+  const gap=4, margin=10;
+  const spaceBelow=window.innerHeight-r.bottom-margin;
+  const spaceAbove=r.top-margin;
+
+  // cap height to whichever side we use, and let it scroll if the menu is taller
+  const openUp = spaceBelow < pop.offsetHeight && spaceAbove > spaceBelow;
+  const avail = Math.max(120, (openUp?spaceAbove:spaceBelow));
+  if(pop.offsetHeight>avail){ pop.style.maxHeight=avail+'px'; pop.style.overflowY='auto'; }
+
   const pw=pop.offsetWidth, ph2=pop.offsetHeight;
-  let left=r.left+window.scrollX, top=r.bottom+window.scrollY+4;
-  if(left+pw>window.scrollX+document.documentElement.clientWidth-10) left=r.right+window.scrollX-pw;
-  if(r.bottom+ph2>window.innerHeight-10) top=r.top+window.scrollY-ph2-4;
+  let left=r.left+window.scrollX;
+  if(left+pw>window.scrollX+document.documentElement.clientWidth-margin) left=r.right+window.scrollX-pw;
+  let top = openUp ? (r.top+window.scrollY-ph2-gap) : (r.bottom+window.scrollY+gap);
+  if(top<window.scrollY+margin) top=window.scrollY+margin;
   pop.style.left=left+'px'; pop.style.top=top+'px';
   setTimeout(()=>document.addEventListener('click',outsidePop,true),0);
 }
@@ -555,7 +579,7 @@ function openEdit(isoD, idx){
   const sh=state.days[isoD][idx];
   editRef={iso:isoD, idx};
   const d=new Date(isoD+'T00:00:00');
-  $('#editTitle').textContent=`Edit Shift (v4) — ${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
+  $('#editTitle').textContent=`Edit Shift (v5) — ${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
   $('#e_action').value=sh.action||'';
   setTimeSel('e_start', sh.start);
   setTimeSel('e_end', sh.end);
