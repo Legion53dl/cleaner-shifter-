@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Teatro × Prestige — Cleaning Schedule Builder</title>
+<title>Teatro × Prestige — Cleaning Schedule (v4 · 24h)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -172,7 +172,7 @@
 <body>
 
 <header>
-  <h1>TEATRO <span>×</span> PRESTIGE <span style="font-size:.72rem;color:var(--muted);letter-spacing:.1em;margin-left:8px">CLEANING SCHEDULE</span> <span style="font-size:.62rem;color:var(--gold-dim);letter-spacing:.1em;margin-left:6px">v3 · 24h</span></h1>
+  <h1>TEATRO <span>×</span> PRESTIGE <span style="font-size:.72rem;color:var(--muted);letter-spacing:.1em;margin-left:8px">CLEANING SCHEDULE</span> <span style="font-size:.62rem;color:var(--gold-dim);letter-spacing:.1em;margin-left:6px">v4 · 24h</span></h1>
   <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)">
     Month <input type="month" id="monthPick">
   </label>
@@ -555,7 +555,7 @@ function openEdit(isoD, idx){
   const sh=state.days[isoD][idx];
   editRef={iso:isoD, idx};
   const d=new Date(isoD+'T00:00:00');
-  $('#editTitle').textContent=`Edit Shift — ${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
+  $('#editTitle').textContent=`Edit Shift (v4) — ${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
   $('#e_action').value=sh.action||'';
   setTimeSel('e_start', sh.start);
   setTimeSel('e_end', sh.end);
