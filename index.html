@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Teatro × Prestige — Cleaning Schedule (v5 · 24h)</title>
+<title>Teatro × Prestige — Cleaning Schedule (v6 · 24h)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -172,7 +172,7 @@
 <body>
 
 <header>
-  <h1>TEATRO <span>×</span> PRESTIGE <span style="font-size:.72rem;color:var(--muted);letter-spacing:.1em;margin-left:8px">CLEANING SCHEDULE</span> <span style="font-size:.62rem;color:var(--gold-dim);letter-spacing:.1em;margin-left:6px">v5 · 24h</span></h1>
+  <h1>TEATRO <span>×</span> PRESTIGE <span style="font-size:.72rem;color:var(--muted);letter-spacing:.1em;margin-left:8px">CLEANING SCHEDULE</span> <span style="font-size:.62rem;color:var(--gold-dim);letter-spacing:.1em;margin-left:6px">v6 · 24h</span></h1>
   <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted)">
     Month <input type="month" id="monthPick">
   </label>
@@ -318,8 +318,8 @@ const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 const PRESETS=[
   {label:'Day Shift',        cls:'t-day',   mk:d=>({action:'DAY SHIFT', start:'08:00', end:'16:00', sup:1, cleaners:4, hours:8, rateType:autoRate(d,'day'), cls:'t-day'})},
-  {label:'Show @ 19:30',     cls:'t-show',  mk:d=>({action:'SHOW @ 19:30', start:'16:00', end:'23:00', sup:1, cleaners:6, hours:7, rateType:autoRate(d,'evening'), cls:'t-show'})},
-  {label:'Show @ 15:00',     cls:'t-show',  mk:d=>({action:'SHOW @ 15:00', start:'11:00', end:'19:00', sup:1, cleaners:6, hours:7, rateType:autoRate(d,'evening'), cls:'t-show'})},
+  {label:'Show — evening',   cls:'t-show',  mk:d=>({action:'SHOW', start:'16:00', end:'23:00', sup:1, cleaners:6, hours:7, rateType:autoRate(d,'evening'), cls:'t-show'})},
+  {label:'Show — matinee',   cls:'t-show',  mk:d=>({action:'SHOW', start:'11:00', end:'19:00', sup:1, cleaners:6, hours:7, rateType:autoRate(d,'evening'), cls:'t-show'})},
   {label:'Load In',          cls:'t-load',  mk:d=>({action:'DAY SHIFT - LOAD IN', start:'08:00', end:'16:00', sup:1, cleaners:4, hours:7, rateType:autoRate(d,'day'), cls:'t-load'})},
   {label:'Show + Load Out',  cls:'t-load',  mk:d=>({action:'SHOW + LOAD OUT', start:'09:00', end:'20:00', sup:1, cleaners:6, hours:8, rateType:autoRate(d,'day'), cls:'t-load'})},
   {label:'Maintenance Clean',cls:'t-maint', mk:d=>({action:'DAY SHIFT - MAINTENANCE CLEAN', start:'09:00', end:'16:00', sup:1, cleaners:2, hours:7, rateType:autoRate(d,'day'), cls:'t-maint'})},
@@ -401,7 +401,8 @@ function renderShows(){
 }
 
 function chipLabel(sh){
-  const a=(sh.action||'SHIFT').replace('DAY SHIFT - ','').replace('DAY SHIFT','DAY');
+  let a=(sh.action||'SHIFT').replace('DAY SHIFT - ','').replace('DAY SHIFT','DAY');
+  a=a.replace(/\s*@\s*\d{1,2}[:h]\d{2}/i,'').trim();   // drop "@ 19:30" style times
   return a;
 }
 
@@ -579,7 +580,7 @@ function openEdit(isoD, idx){
   const sh=state.days[isoD][idx];
   editRef={iso:isoD, idx};
   const d=new Date(isoD+'T00:00:00');
-  $('#editTitle').textContent=`Edit Shift (v5) — ${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
+  $('#editTitle').textContent=`Edit Shift (v6) — ${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`;
   $('#e_action').value=sh.action||'';
   setTimeSel('e_start', sh.start);
   setTimeSel('e_end', sh.end);
